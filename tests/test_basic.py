@@ -54,7 +54,7 @@ def test_model_and_preprocessor_integration():
     assert np.allclose(np.std(processed_data, axis=0), 1, atol=1e-6)
 
     model = EEGClassifier(input_size=20, num_classes=3)
-    tensor_data = torch.FloatTensor(processed_data[:10]) 
+    tensor_data = torch.FloatTensor(processed_data[:10])
     output = model(tensor_data)
 
     assert output.shape == (10, 3)

@@ -9,7 +9,6 @@ def test_eeg_preprocessor_initialization():
     """Test EEGPreprocessor initialization"""
     preprocessor = EEGPreprocessor()
 
-    
     assert hasattr(preprocessor, "scaler")
     assert isinstance(preprocessor.scaler, StandardScaler)
 
@@ -17,17 +16,14 @@ def test_eeg_preprocessor_initialization():
 def test_eeg_preprocessor_basic_preprocessing():
     """Test basic preprocessing functionality"""
     preprocessor = EEGPreprocessor()
-    data = np.random.rand(100, 10)  
+    data = np.random.rand(100, 10)
 
     processed_data = preprocessor.preprocess(data)
 
-    
     assert processed_data.shape == data.shape
 
-    
     assert np.allclose(np.mean(processed_data, axis=0), 0, atol=1e-6)
 
-    
     assert np.allclose(np.std(processed_data, axis=0), 1, atol=1e-6)
 
 
@@ -51,11 +47,9 @@ def test_eeg_preprocessor_consistency():
     preprocessor = EEGPreprocessor()
     data = np.random.rand(50, 10)
 
-    
     processed1 = preprocessor.preprocess(data)
     processed2 = preprocessor.preprocess(data.copy())
 
-    
     assert np.allclose(processed1, processed2)
 
 
@@ -63,25 +57,21 @@ def test_eeg_preprocessor_with_extreme_values():
     """Test preprocessing with data containing extreme values"""
     preprocessor = EEGPreprocessor()
 
-    
-    data = np.random.randn(100, 10) * 1000  
+    data = np.random.randn(100, 10) * 1000
 
     processed_data = preprocessor.preprocess(data)
 
-    
     assert processed_data.shape == data.shape
 
-    
     assert np.allclose(np.mean(processed_data, axis=0), 0, atol=1e-6)
 
-    
     assert np.allclose(np.std(processed_data, axis=0), 1, atol=1e-6)
 
 
 def test_eeg_preprocessor_single_feature():
     """Test preprocessing with single feature"""
     preprocessor = EEGPreprocessor()
-    data = np.random.rand(100, 1)  
+    data = np.random.rand(100, 1)
 
     processed_data = preprocessor.preprocess(data)
 
@@ -110,8 +100,6 @@ def test_different_preprocessing_consistency():
     processed1 = preprocessor1.preprocess(data.copy())
     processed2 = preprocessor2.preprocess(data.copy())
 
-    
-    
     assert np.allclose(np.mean(processed1, axis=0), 0, atol=1e-6)
     assert np.allclose(np.std(processed1, axis=0), 1, atol=1e-6)
     assert np.allclose(np.mean(processed2, axis=0), 0, atol=1e-6)
@@ -121,10 +109,10 @@ def test_different_preprocessing_consistency():
 def test_preprocessing_with_various_distributions():
     """Test preprocessing with different data distributions"""
     distributions = [
-        np.random.rand(100, 10),  
-        np.random.randn(100, 10),  
-        np.random.exponential(1, (100, 10)),  
-        np.random.beta(2, 5, (100, 10)),  
+        np.random.rand(100, 10),
+        np.random.randn(100, 10),
+        np.random.exponential(1, (100, 10)),
+        np.random.beta(2, 5, (100, 10)),
     ]
 
     for data in distributions:
