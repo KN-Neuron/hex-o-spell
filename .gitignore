@@ -35,7 +35,7 @@ ENV/
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
+
 
 # Data and models (specific to this project)
 data/
