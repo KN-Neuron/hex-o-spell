@@ -1,0 +1,64 @@
+[tool.poetry]
+name = "hex-o-spell"
+version = "0.1.0"
+description = "EEG-based classification using PyTorch and sklearn"
+authors = ["Your Team <team@example.com>"]
+license = "MIT"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+torch = "^2.5.0"
+scikit-learn = "^1.5.0"
+numpy = "^2.0.0"
+pandas = "^2.2.0"
+matplotlib = "^3.8.0"
+seaborn = "^0.13.0"
+scipy = "^1.14.0"
+mne = "^1.9.0"
+brainaccess = "^3.6.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-cov = "^5.0.0"
+black = "^24.0.0"
+flake8 = "^7.0.0"
+jupyter = "^1.1.1"
+mypy = "^1.8.0"
+types-pyyaml = "^6.0.12.20250915"
+pandas-stubs = "^3.0.0.260204"
+scipy-stubs = "^1.17.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short"
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/env/*",
+    "*/__pycache__/*"
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
