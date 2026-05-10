@@ -1,4 +1,4 @@
-# BrainBoard
+<img width="1710" height="1112" alt="image" src="https://github.com/user-attachments/assets/546e0c15-25f4-4ddb-b5ef-0bf1de5367cd" /># BrainBoard
 
 Motor-imagery BCI keyboard. Three signals — left-hand MI, right-hand MI, and
 deliberate blink — drive a sector/letter speller via a state machine.
@@ -29,6 +29,20 @@ Speller state machine: `Idle → Writing → SectorNavigation → LetterNavigati
 ```bash
 PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.run_keyboard --driver mock
 ```
+
+### Screenshots
+
+#### Hex-o-Spell
+<img width="1710" height="1112" alt="image" src="https://github.com/user-attachments/assets/b2d69835-835b-4999-90ed-3d4879f2d874" />
+
+#### Ring-o-spell
+<img width="1710" height="1112" alt="image" src="https://github.com/user-attachments/assets/e8938526-6e83-49e2-a227-1976c9782d93" />
+
+
+#### Tree like implementation (experimental to find fastest way of typing with word suggestions)
+<img width="1710" height="1112" alt="image" src="https://github.com/user-attachments/assets/02d4dd9b-76bb-4f0b-9e93-d780403fe969" />
+
+
 
 ### Interactive REPL — "see what's going on" mode
 
