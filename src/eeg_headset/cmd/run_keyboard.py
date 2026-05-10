@@ -56,6 +56,20 @@ def _build_main_driver(args: argparse.Namespace, config: HeadsetConfig):
             raise SystemExit("--driver playback requires --playback-source PATH")
         return PlaybackDriver(config=config, source=args.playback_source, loop=True)
 
+    if args.driver == "scripted":
+        from src.eeg_headset.drivers import Intent, ScriptedDriver
+        if not args.scripted_sequence:
+            raise SystemExit(
+                "--driver scripted requires --scripted-sequence "
+                "(comma-separated, e.g. 'blink,right,right,blink')"
+            )
+        try:
+            intents = [Intent[s.strip().upper()] for s in args.scripted_sequence.split(",")]
+        except KeyError as e:
+            valid = [i.name for i in Intent]
+            raise SystemExit(f"Invalid intent {e}. Valid: {valid}")
+        return ScriptedDriver(config, intents)
+
     if args.driver == "brainaccess":
         try:
             from src.eeg_headset.drivers.brainaccess import BrainAccessDriver
@@ -102,15 +116,35 @@ def _build_blink_detector(args: argparse.Namespace) -> BlinkDetector:
     )
 
 
+def _build_layout(name: str):
+    """Construct the speller layout requested via --layout."""
+    from src.speller import BigramAdaptiveLayout, StaticGridLayout
+    if name == "bigram":
+        return BigramAdaptiveLayout()
+    return StaticGridLayout()
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     # Main EEG driver
     parser.add_argument(
         "--driver",
-        choices=["mock", "playback", "brainaccess"],
+        choices=["mock", "playback", "brainaccess", "scripted"],
         default="mock",
         help="Where to source EEG data from",
+    )
+    parser.add_argument(
+        "--scripted-sequence",
+        default=None,
+        help="(--driver scripted only) comma-separated intents, e.g. 'blink,blink,right,right,blink' "
+        "(LEFT/RIGHT/BLINK/REST, case-insensitive)",
+    )
+    parser.add_argument(
+        "--layout",
+        choices=["static", "bigram"],
+        default="static",
+        help="Speller layout (default: static = original 5×6, bigram = adaptive Polish ring)",
     )
     parser.add_argument(
         "--headset-model",
@@ -183,7 +217,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"→ Loading model from {args.model_path}")
     model = load_model(args.model_path)
 
-    speller = Speller()
+    speller = Speller(layout=_build_layout(args.layout))
     speller.state = SpellerStateIdle()
 
     blink_detector = _build_blink_detector(args)

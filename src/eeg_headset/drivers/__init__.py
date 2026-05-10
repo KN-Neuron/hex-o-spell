@@ -1,6 +1,7 @@
 from .headset_driver import HeadsetDriver
 from .mock import MockDriver
 from .playback import PlaybackDriver
+from .scripted import Intent, ScriptedDriver, ScriptedDriverConfig
 
 try:
     from .brainaccess import BrainAccessDriver

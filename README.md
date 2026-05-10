@@ -30,6 +30,39 @@ Speller state machine: `Idle → Writing → SectorNavigation → LetterNavigati
 PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.run_keyboard --driver mock
 ```
 
+### Interactive REPL — "see what's going on" mode
+
+Bypass the EEG pipeline and drive the speller directly with keyboard input.
+This is the easiest way to understand how the keyboard behaves before
+plugging in hardware.
+
+```bash
+# Bigram-adaptive layout (Polish, context-sensitive)
+PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.scripted_repl --layout bigram
+
+# Static 5×6 grid (the original BrainBoard layout)
+PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.scripted_repl --layout static
+```
+
+Controls: `L`/`a` = left, `R`/`d` = right, `B`/`w`/`Enter` = select (blink),
+`S` = back, `Q` = quit.
+
+### Scripted driver — end-to-end regression test
+
+Synthesizes EEG that should classify as the given intent sequence. Useful
+for testing the full pipeline (driver → MI classifier → blink detector →
+speller) without hardware:
+
+```bash
+PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.run_keyboard \
+    --driver scripted \
+    --scripted-sequence blink,blink,right,right,blink,blink \
+    --layout bigram --headset-model SAMPLE_64CH
+```
+
+Note: each scripted intent takes `--epoch-seconds` (default 4s) of wall-clock
+time, so a 6-intent sequence is a 24s demo.
+
 ### With recorded data
 
 ```bash
@@ -64,6 +97,25 @@ PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.run_keyboard \
     --driver brainaccess --headset-model MIDI_16CH_BASE \
     --bioamp-port /dev/ttyUSB0 --bioamp-baud 115200
 ```
+
+## Layouts
+
+The speller has a pluggable layout system. Two are shipped:
+
+**StaticGridLayout** (default, `--layout static`): Original 5×6 grid,
+hard-coded letter assignment. No context.
+
+**BigramAdaptiveLayout** (`--layout bigram`): 6×6 ring keyboard with
+context-sensitive contents. After each letter is committed, all 36 ring
+positions are re-ranked by `P(next | last_letter)` from a precomputed
+Polish bigram table (`data/language/polish_bigrams.json`). The 6 most likely
+continuations sit in sector 0, the next 6 in sector 1, etc. Cold start uses
+the unigram distribution conditioned on space (i.e. "first letter of a
+word" frequencies).
+
+To plug in your own layout, implement the `SpellerLayout` Protocol from
+`src/speller/layout.py` (4 methods: `n_sectors`, `letters_in_sector`,
+`on_letter_committed`, `reset`) and pass an instance to `Speller(layout=...)`.
 
 ## Model
 

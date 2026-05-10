@@ -7,6 +7,9 @@ from .state import (
     SpellerStateLetterNavigation,
     UnsupportedTransitionError,
 )
+from .layout import SpellerLayout
+from .static_layout import StaticGridLayout
+from .bigram_layout import BigramAdaptiveLayout
 
 __all__ = [
     "Speller",
@@ -17,4 +20,7 @@ __all__ = [
     "SpellerStateSectorNavigation",
     "SpellerStateLetterNavigation",
     "UnsupportedTransitionError",
+    "SpellerLayout",
+    "StaticGridLayout",
+    "BigramAdaptiveLayout",
 ]
