@@ -252,3 +252,40 @@ def test_low_confidence_predictions_do_not_commit(speller, fast_config):
 
     # Cursor stayed at initial position.
     assert speller.state.cursor == 0
+
+
+def test_separate_eog_headset_drives_blink(speller, fast_config):
+    """When eog_headset is provided, blink_detector reads from it, not the main EEG.
+
+    The detector is scripted to only return True when it receives the EOG
+    headset's specific output. We verify by counting which headset's get_output
+    was called immediately before the detect call.
+    """
+    main_eeg = _StaticHeadset(n_channels=64, sfreq=160.0)
+    eog_eeg = _StaticHeadset(n_channels=1, sfreq=500.0)
+
+    # Track which headset's get_output was called LAST before detect().
+    last_source: list[str] = []
+    orig_main = main_eeg.get_output
+    orig_eog = eog_eeg.get_output
+    main_eeg.get_output = lambda seconds=1: (last_source.append("main"), orig_main(seconds))[1]
+    eog_eeg.get_output = lambda seconds=1: (last_source.append("eog"), orig_eog(seconds))[1]
+
+    seen_sfreqs: list[float] = []
+
+    class _ProbeBlink:
+        def detect(self, window, sfreq):
+            seen_sfreqs.append(sfreq)
+            return False
+
+    model = _FakeModel(n_classes=2)
+    pipeline = BCIPipeline(
+        model, main_eeg, speller, _ProbeBlink(), config=fast_config, eog_headset=eog_eeg
+    )
+
+    pipeline.step()
+
+    # Last call to get_output before detect() must be the EOG one (blink reads EOG).
+    assert "eog" in last_source
+    # And the sfreq passed to detect must be the EOG's sfreq, not the main EEG's.
+    assert seen_sfreqs == [500.0]

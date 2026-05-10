@@ -1,98 +1,136 @@
-# Hex-O-Spell: EEG Classification Project
+# BrainBoard
 
-This project implements EEG-based classification using PyTorch and scikit-learn.
+Motor-imagery BCI keyboard. Three signals — left-hand MI, right-hand MI, and
+deliberate blink — drive a sector/letter speller via a state machine.
 
-## Features
+## Architecture
 
-- EEG data preprocessing pipeline
-- Neural network classification models
-- Standardized preprocessing with scikit-learn
-- PyTorch-based deep learning models
-- Comprehensive testing suite
-
-## Installation
-
-1. Clone the repository
-2. Install the dependencies using Poetry:
-
-```bash
-poetry install
+```
+   ┌──────────────┐                ┌──────────────────┐
+   │ BrainAccess  │   16ch EEG     │                  │   move(L|R)
+   │ MIDI / Mock  │───────────────▶│   BCIPipeline    │──────────────▶┌──────────┐
+   │ / Playback   │   250 Hz       │                  │               │  Speller │
+   └──────────────┘                │  • EEGNet (MI)   │   select()    │  (state  │
+                                   │  • BlinkDetector │──────────────▶│  machine)│
+   ┌──────────────┐                │  • smoothing     │               └──────────┘
+   │ BioAmp EXG   │   1ch EOG      │  • debounce      │
+   │ Pill (opt.)  │───────────────▶│                  │
+   │ via serial   │   500 Hz       └──────────────────┘
+   └──────────────┘
 ```
 
-To install development dependencies as well:
+Speller state machine: `Idle → Writing → SectorNavigation → LetterNavigation
+→ (commit letter) → Writing`. Blink advances/selects, L/R navigates.
+
+## Running
+
+### Demo (no hardware)
 
 ```bash
-poetry install --with dev
+PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.run_keyboard --driver mock
 ```
 
-## Usage
-
-Run the main training script:
+### With recorded data
 
 ```bash
-poetry run python src/train.py
+# Requires data/X.npy from the motor-imagery-AI repo's training pipeline.
+PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.run_keyboard \
+    --driver playback --playback-source data/X.npy \
+    --headset-model SAMPLE_64CH
 ```
 
-## Testing
-
-This project includes a comprehensive testing suite using pytest. To run the tests:
-
-1. Run all tests:
+### Real BrainAccess MIDI (no separate EOG)
 
 ```bash
-poetry run pytest
+# Sanity check first:
+PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.brainaccess_sanity \
+    --model MIDI_16CH_BASE
+
+# Then run the keyboard. Blink reads from Fp1/Fp2 (channels 0, 1 of MIDI).
+PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.run_keyboard \
+    --driver brainaccess --headset-model MIDI_16CH_BASE
 ```
 
-2. Run tests with coverage:
+### Real BrainAccess MIDI + BioAmp EXG Pill (full setup)
+
+1. Flash `firmware/bioamp_exg_pill.ino` to your ESP32 / Arduino / Maker Uno.
+2. Connect electrodes (vertical EOG: above eye, below eye, reference on
+   forehead).
+3. Find the serial port (`ls /dev/ttyUSB*` on Linux, Device Manager on Windows).
+4. Run:
 
 ```bash
-poetry run pytest --cov=src --cov-report=html
+PYTHONPATH=. poetry run python -m src.eeg_headset.cmd.run_keyboard \
+    --driver brainaccess --headset-model MIDI_16CH_BASE \
+    --bioamp-port /dev/ttyUSB0 --bioamp-baud 115200
 ```
 
-3. Run specific test files:
+## Model
+
+The default checkpoint at `data/model/final_best.pth` is the binary L/R
+PhysioNet model (64 channels, 160 Hz). `load_model()` auto-derives all hparams
+from the state_dict — swap in a 16-channel BrainAccess MIDI retrain by just
+replacing the `.pth` file. **No code edit required.**
+
+If your retrain uses different preprocessing, override at runtime:
 
 ```bash
-poetry run pytest tests/test_models.py
-poetry run pytest tests/test_preprocessing.py
-poetry run pytest tests/test_integration.py
+... --preprocess-sfreq 250 --preprocess-bandpass-low 7.0 --preprocess-bandpass-high 30.0
 ```
 
-4. Run tests with verbose output:
+## Tests
 
 ```bash
-poetry run pytest -v
+poetry run pytest                        # full suite (~10 s)
+poetry run pytest tests/test_blink_detector.py -v
+poetry run pytest tests/test_pipeline.py -v
+poetry run pytest tests/test_bioamp_driver.py -v
 ```
 
-### Test Structure
+## Tuning blink detection
 
-- `tests/test_basic.py`: Basic functionality tests
-- `tests/test_models.py`: Tests for the EEG classification models
-- `tests/test_preprocessing.py`: Tests for the EEG preprocessing pipeline
-- `tests/test_integration.py`: Integration tests for the full pipeline
-- `tests/conftest.py`: Test fixtures and configuration
+Defaults work for synthetic test signals (150 µV blink, 5 µV noise). For real
+subjects you'll likely want to lower `threshold_min_uv` or adjust `threshold_k`
+in `BlinkDetectorConfig` after a baseline session. The detector exposes all
+thresholds as constructor args:
 
-### Code Quality
-
-The project uses the following tools for code quality:
-
-- `black` for code formatting
-- `flake8` for linting
-- `mypy` for static type checking
-
-Run code formatting:
-
-```bash
-poetry run black src/ tests/
+```python
+from src.eeg_headset.blink_detector import BlinkDetector, BlinkDetectorConfig
+detector = BlinkDetector(
+    config=BlinkDetectorConfig(
+        threshold_k=4.0,        # lower → more sensitive
+        threshold_min_uv=20.0,  # floor against quiet baselines
+        min_duration_s=0.25,    # higher → reject more spontaneous blinks
+    )
+)
 ```
 
-Run linting:
+## Project layout
 
-```bash
-poetry run flake8 src/ tests/
 ```
+src/
+├── eeg_headset/
+│   ├── eeg_headset.py        — high-level streaming wrapper
+│   ├── blink_detector.py     — bandpass + MAD + duration check
+│   ├── ring_buffer.py        — fixed-capacity sample buffer
+│   ├── headset_config.py     — YAML-backed channel/sfreq config
+│   ├── drivers/
+│   │   ├── headset_driver.py — Protocol all drivers conform to
+│   │   ├── mock.py           — synthetic data, no hardware
+│   │   ├── playback.py       — replay from .npy
+│   │   ├── brainaccess.py    — real BrainAccess SDK
+│   │   └── bioamp.py         — serial-attached BioAmp EXG Pill
+│   └── cmd/
+│       ├── run_keyboard.py       — main entry point
+│       ├── brainaccess_sanity.py — connectivity smoke test
+│       └── demo.py               — annotation-only legacy demo
+├── inference/
+│   ├── pipeline.py           — BCIPipeline class wiring everything together
+│   └── starter_bci.py        — EEGNet, load_model (auto-hparams), preprocess
+└── speller/
+    ├── speller.py            — Speller façade
+    └── state.py              — Idle / Writing / Sector / Letter states
 
-Run type checking:
-
-```bash
-poetry run mypy src/
+firmware/
+└── bioamp_exg_pill.ino       — reference Arduino sketch matching the driver
 ```
