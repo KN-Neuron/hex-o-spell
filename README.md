@@ -1,4 +1,4 @@
-<img width="1710" height="1112" alt="image" src="https://github.com/user-attachments/assets/546e0c15-25f4-4ddb-b5ef-0bf1de5367cd" /># BrainBoard
+
 
 Motor-imagery BCI keyboard. Three signals — left-hand MI, right-hand MI, and
 deliberate blink — drive a sector/letter speller via a state machine.
