@@ -1,16 +1,8 @@
-"""
-Ring-O-Spell — model + preprocessing + dane
-Resztę (driver, pipeline, streaming, UI glue) robisz sam.
-
-Szybki test:
-    python starter_bci.py --prepare          # ściąga dataset → data/
-    python starter_bci.py --test             # sprawdza czy model działa
-"""
-
 import torch
 import torch.nn as nn
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
+from src.data.loader import download_dataset
 
 # ═══════════════════════════════════════════════════════════════
 # MODEL
@@ -69,9 +61,9 @@ class EEGNet(nn.Module):
 
 
 def load_model(
-    path: str = "data/model/3class_eegnet_best.pth", device: str = "cpu"
+    path: str = "data/model/final_best.pth", device: str = "cpu"
 ) -> nn.Module:
-    model = EEGNet()
+    model = EEGNet(classes=2, f1=8, d=2, f2=16)
     model.load_state_dict(torch.load(path, map_location=device))
     model.to(device).eval()
     return model
@@ -121,3 +113,9 @@ if __name__ == "__main__":
             print(
                 f"y={LABELS[y[i]]:<12s} pred={LABELS[pred]:<12s} conf={probs[pred]:.0%}"
             )
+
+    elif "--prepare" in sys.argv:
+        print("Pobieranie datasetu PhysioNet MI z Kaggle...")
+        subjects = download_dataset()
+        print(f"✅ Zakończono pobieranie! Pobrane pliki dla: {list(subjects.keys())[:5]}...")
+        sys.exit(0)
