@@ -217,7 +217,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"→ Loading model from {args.model_path}")
     model = load_model(args.model_path)
 
-    speller = Speller(layout=_build_layout(args.layout))
+    typed_buffer = []
+
+    def _on_letter(letter: str) -> None:
+        if letter == "·":
+            return
+        typed_buffer.append(letter)
+        print(f"\n[TEXT] {''.join(typed_buffer)}")
+
+    speller = Speller(
+        layout=_build_layout(args.layout),
+        on_letter_select=_on_letter
+    )
     speller.state = SpellerStateIdle()
 
     blink_detector = _build_blink_detector(args)

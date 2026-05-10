@@ -36,49 +36,21 @@ import sys
 from typing import Callable, Optional
 
 from PyQt6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import (
-    QAction,
-    QBrush,
-    QColor,
-    QFont,
-    QKeyEvent,
-    QPainter,
-    QPainterPath,
-    QPen,
-    QPolygonF,
-)
-from PyQt6.QtWidgets import (
-    QApplication,
-    QComboBox,
-    QHBoxLayout,
-    QLabel,
-    QMainWindow,
-    QPushButton,
-    QSizePolicy,
-    QTextEdit,
-    QToolBar,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt6.QtGui import (QAction, QBrush, QColor, QFont, QKeyEvent, QPainter,
+                         QPainterPath, QPen, QPolygonF)
+from PyQt6.QtWidgets import (QApplication, QComboBox, QHBoxLayout, QLabel,
+                             QMainWindow, QPushButton, QSizePolicy, QTextEdit,
+                             QToolBar, QVBoxLayout, QWidget)
 
-from src.speller import (
-    BigramAdaptiveLayout,
-    Direction,
-    Speller,
-    StaticGridLayout,
-    UnsupportedTransitionError,
-)
+from src.speller import (BigramAdaptiveLayout, Direction, Speller,
+                         StaticGridLayout, UnsupportedTransitionError)
 from src.speller.bigram_layout import BigramAdaptiveLayout as _Bigram
 from src.speller.hex_layout import HexLayout
-from src.speller.state import (
-    SpellerStateIdle,
-    SpellerStateLetterNavigation,
-    SpellerStateSectorNavigation,
-    SpellerStateWriting,
-)
+from src.speller.state import (SpellerStateIdle, SpellerStateLetterNavigation,
+                               SpellerStateSectorNavigation,
+                               SpellerStateWriting)
 from src.speller.tree_speller import TreeSpeller, collect_leaves
 from src.speller.word_suggester import WordSuggester
-
 
 # Color palette (warm earth-tones to match the Ring-O-Spell screenshots)
 COLOR_BG = QColor("#F5F2EA")
@@ -140,7 +112,7 @@ class HexKeyboardWidget(BaseKeyboardWidget):
             layout=self.layout_,
             on_letter_select=lambda c: self.letter_committed.emit(c),
         )
-        self.speller.state = SpellerStateWriting()  # skip the Idle gate for GUI
+        self.speller.state = SpellerStateSectorNavigation()  # start in navigation mode for GUI
 
     def handle_action(self, action: str) -> None:
         try:
@@ -279,7 +251,7 @@ class RingKeyboardWidget(BaseKeyboardWidget):
             layout=self.layout_,
             on_letter_select=lambda c: self.letter_committed.emit(c),
         )
-        self.speller.state = SpellerStateWriting()
+        self.speller.state = SpellerStateSectorNavigation()
 
     def handle_action(self, action: str) -> None:
         try:
@@ -415,7 +387,20 @@ class TreeKeyboardWidget(BaseKeyboardWidget):
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.tree = TreeSpeller(on_letter_select=lambda c: self.letter_committed.emit(c))
+        self.tree = TreeSpeller(on_letter_select=self._on_tree_letter)
+        self.last_letter = ""
+        self.flash_timer = QTimer(self)
+        self.flash_timer.setSingleShot(True)
+        self.flash_timer.timeout.connect(self._clear_flash)
+
+    def _on_tree_letter(self, letter: str) -> None:
+        self.last_letter = letter
+        self.letter_committed.emit(letter)
+        self.flash_timer.start(500)  # show for 500ms
+
+    def _clear_flash(self) -> None:
+        self.last_letter = ""
+        self.update()
 
     def handle_action(self, action: str) -> None:
         match action:
@@ -441,16 +426,29 @@ class TreeKeyboardWidget(BaseKeyboardWidget):
         cy_bot = self.height() * 0.65
         node_size = 80
 
+        # If we just committed, show the letter in a highlighted state even if tree reset
+        display_letter = self.last_letter if self.last_letter else ""
+        is_flash = bool(self.last_letter)
+
         # Current node
-        p.setBrush(COLOR_KEY_HIGHLIGHT)
-        p.setPen(QPen(COLOR_KEY_HIGHLIGHT, 2))
+        if is_flash:
+            p.setBrush(COLOR_KEY_HIGHLIGHT)
+            p.setPen(QPen(COLOR_KEY_HIGHLIGHT, 2))
+        else:
+            p.setBrush(COLOR_KEY_HIGHLIGHT)
+            p.setPen(QPen(COLOR_KEY_HIGHLIGHT, 2))
+        
         p.drawRoundedRect(QRectF(cx - node_size / 2, cy_top - node_size / 2, node_size, node_size), 8, 8)
         p.setPen(QPen(COLOR_KEY_HIGHLIGHT_TEXT))
         p.setFont(QFont("Helvetica", 28, QFont.Weight.Bold))
-        if self.tree.cursor.is_leaf:
+        
+        if is_flash:
+            label = display_letter
+        elif self.tree.cursor.is_leaf:
             label = self.tree.cursor.letter or ""
         else:
             label = "•"  # internal node
+        
         p.drawText(QRectF(cx - node_size / 2, cy_top - node_size / 2, node_size, node_size),
                    Qt.AlignmentFlag.AlignCenter, label)
 
@@ -519,51 +517,64 @@ class MainWindow(QMainWindow):
         self.layout_selector = QComboBox()
         self.layout_selector.addItems(["Hex-O-Spell", "Ring-O-Spell", "Tree (Huffman)"])
         self.layout_selector.currentIndexChanged.connect(self._switch_layout)
+        # Selector keeps focus after selection on macOS — that breaks key handling.
+        self.layout_selector.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         toolbar.addWidget(self.layout_selector)
+
+        toolbar.addSeparator()
+        toolbar.addWidget(QLabel("  Language:  "))
+        self.lang_selector = QComboBox()
+        self.lang_selector.addItems(["English", "Polish"])
+        self.lang_selector.currentIndexChanged.connect(self._switch_language)
+        self.lang_selector.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        toolbar.addWidget(self.lang_selector)
 
         toolbar.addSeparator()
         clear_btn = QPushButton("Clear text")
         clear_btn.clicked.connect(self._clear_text)
+        clear_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         toolbar.addWidget(clear_btn)
 
         # Central widget
         central = QWidget()
-        layout = QVBoxLayout(central)
+        self.keyboard_layout = QVBoxLayout(central)
         self.setCentralWidget(central)
 
         # Text area at top
+        # Text area at top — must NOT take keyboard focus, otherwise it eats
+        # arrow/space keys and the keyboard widget never sees them.
         self.text_display = QTextEdit()
         self.text_display.setReadOnly(True)
         self.text_display.setMaximumHeight(80)
+        self.text_display.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.text_display.setStyleSheet(
-            "QTextEdit { font-size: 18pt; background-color: #FFFFFF; "
+            "QTextEdit { font-size: 18pt; background-color: #FFFFFF; color: #000000; "
             "border: 1px solid #D8D2C4; border-radius: 4px; padding: 8px; }"
         )
-        layout.addWidget(self.text_display)
+        self.keyboard_layout.addWidget(self.text_display)
 
-        # Suggestion bar
+        # Suggestion bar — buttons must not steal focus on click either.
         self.suggestion_bar = QWidget()
         sug_layout = QHBoxLayout(self.suggestion_bar)
         sug_layout.setContentsMargins(0, 0, 0, 0)
         self.suggestion_buttons: list[QPushButton] = []
         for i in range(3):
             b = QPushButton("")
+            b.setMinimumHeight(40)
+            b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            # Add explicit border and colors so buttons are visible even when empty
             b.setStyleSheet(
-                "QPushButton { font-size: 14pt; padding: 8px; background-color: #FFFFFF; "
-                "border: 1px solid #D8D2C4; border-radius: 4px; } "
-                "QPushButton:hover { background-color: #F4E5D6; } "
-                "QPushButton:disabled { color: #D8D2C4; }"
+                "QPushButton { "
+                "  font-size: 14pt; padding: 8px; color: #3A3530; "
+                "  background-color: #FFFFFF; border: 1px solid #D8D2C4; "
+                "  border-radius: 4px; "
+                "} "
+                "QPushButton:disabled { background-color: #F5F2EA; color: #D8D2C4; }"
             )
             b.clicked.connect(lambda _, idx=i: self._accept_suggestion(idx))
             sug_layout.addWidget(b)
             self.suggestion_buttons.append(b)
-        layout.addWidget(self.suggestion_bar)
-
-        # Keyboard widget (replaceable by _switch_layout)
-        self.keyboard_container = QWidget()
-        self.keyboard_layout = QVBoxLayout(self.keyboard_container)
-        self.keyboard_layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.keyboard_container, stretch=1)
+        self.keyboard_layout.addWidget(self.suggestion_bar)
 
         self.keyboard_widget: BaseKeyboardWidget = None  # type: ignore
         self._switch_layout(0)  # start with Hex
@@ -573,6 +584,11 @@ class MainWindow(QMainWindow):
             10000,
         )
         self._update_suggestions()
+
+        # On macOS the initial focus often lands on the toolbar or text area
+        # despite our policies. Force it to the keyboard widget after the event
+        # loop has settled.
+        QTimer.singleShot(0, self.keyboard_widget.setFocus)
 
     def _switch_layout(self, idx: int) -> None:
         """Replace the keyboard widget."""
@@ -592,6 +608,23 @@ class MainWindow(QMainWindow):
         self.keyboard_widget.letter_committed.connect(self._on_letter)
         self.keyboard_layout.addWidget(self.keyboard_widget)
         self.keyboard_widget.setFocus()
+
+    def _switch_language(self, idx: int) -> None:
+        """Reload word suggester with the selected language dictionary."""
+        lang_map = {0: "english_words.json", 1: "polish_words.json"}
+        dict_file = lang_map.get(idx, "english_words.json")
+        dict_path = f"data/language/{dict_file}"
+        
+        try:
+            self.suggester = WordSuggester(words_path=dict_path)
+            self.statusBar().showMessage(f"Loaded {dict_file} dictionary.", 3000)
+        except Exception as e:
+            self.suggester = None
+            self.statusBar().showMessage(f"Failed to load dictionary: {e}", 5000)
+        
+        self._update_suggestions()
+        if self.keyboard_widget:
+            self.keyboard_widget.setFocus()
 
     def _on_letter(self, letter: str) -> None:
         if letter == "·":
