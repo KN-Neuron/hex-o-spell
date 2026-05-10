@@ -1,40 +1,53 @@
 import time
+from collections import deque, Counter
+from src.speller.state import SpellerStateSectorNavigation
 
 import numpy as np
 import torch
-from src.egg_headset import EggHeadset
-from src.egg_headset.drivers.playback import PlaybackDriver
-from src.egg_headset.model import HeadsetConfiguration, HeadsetModel
+
+from src.eeg_headset.eeg_headset import EEGHeadset
+from src.eeg_headset.drivers.playback import PlaybackDriver
+from src.eeg_headset.headset_config import HeadsetConfig, HeadsetModel
 from src.inference.starter_bci import LABELS, load_model, preprocess
 from src.speller import Speller, Direction
 
-
-# A live example of the model interacting with the headset and speller.
-# This script simulates a real-time BCI pipeline. It continuously polls the headset
-# for new data, preprocesses it, and feeds it into the model to get predictions.
-# Based on the predicted labels, it updates the speller's state accordingly.
-# The pipeline runs until the user interrupts it (e.g., by pressing Ctrl+C).
-# Note: The model is only 2-class, so we handle left and right hand predictions.
-# The speller state machine also supports select and back actions, but we haven't
-# mapped any predictions to those yet.
-# Example of the speller working correctly is executable in speller/speller.py
-
-
-# How confident does the model need to be before we consider a prediction valid?
 CONFIDENCE_CUTOFF = 0.55
+SMOOTHING_WINDOW_SIZE = 5  # Liczba ostatnich predykcji branych pod uwagę
+MIN_VOTES_REQUIRED = 3  # Wymagana liczba spójnych głosów do wykonania akcji
 
+def detect_blink(window: np.ndarray, threshold: float = 100.0, frontal_channels: list[int] = None) -> bool:
+    """
+    Sprawdza, czy w oknie sygnału wystąpiło mrugnięcie okiem.
+    
+    window: macierz (channels, samples)
+    threshold: próg napięcia (w mikrowoltach), powyżej którego uznajemy sygnał za mrugnięcie.
+    frontal_channels: indeksy elektrod czołowych (np. Fp1, Fp2). 
+                      Jeśli None, sprawdzamy wszystkie kanały.
+    """
+    if frontal_channels is not None:
+        data_to_check = window[frontal_channels, :]
+    else:
+        data_to_check = window
+        
+    max_amplitude = np.max(np.abs(data_to_check))
+    
+    return max_amplitude > threshold
 
 def main() -> None:
     print("Loading EEGNet model...")
     model = load_model()
 
     print("Initializing Fake EEG Driver...")
-    config = HeadsetConfiguration(model=HeadsetModel.SAMPLE_64CH)
+    # config = HeadsetConfig(model=HeadsetModel.MIDI_16CH_BASE)
+    config = HeadsetConfig(model=HeadsetModel.SAMPLE_64CH)
     driver = PlaybackDriver(
-        config=config, source="data/raw/example_64ch_250samples.npy", loop=True
+        config=config, source="data/X.npy", loop=True
     )
-    headset = EggHeadset(driver, buffer_size_seconds=60)
+    headset = EEGHeadset(driver, buffer_size_seconds=60)
     speller: Speller = Speller()
+    speller.state = SpellerStateSectorNavigation()
+
+    prediction_history = deque(maxlen=SMOOTHING_WINDOW_SIZE)
 
     print("Connecting to headset...")
     headset.connect()
@@ -55,7 +68,8 @@ def main() -> None:
 
             # 3. Retrieve the slice
             epoch_data = headset.get_output(seconds=4)
-
+            print(f"Suma kontrolna danych: {np.sum(epoch_data):.5f}")
+            
             expected_samples = 641
             if epoch_data.shape[1] < expected_samples:
                 pad_width = expected_samples - epoch_data.shape[1]
@@ -71,22 +85,44 @@ def main() -> None:
                     )
                 )
 
+            if detect_blink(epoch_data, threshold=150.0):
+                print("👁️ WYKRYTO MRUGNIĘCIE! (Wybór zatwierdzony)")
+                
+                continue
+
             try:
                 tensor = preprocess(epoch_data)
 
                 with torch.no_grad():
                     probs = model(tensor).softmax(dim=1)[0]
-                    pred = probs.argmax().item()
+                    pred_idx = probs.argmax().item()
+                    confidence = probs[pred_idx].item()
 
-                print(f"Predicted: {LABELS[pred]} (confidence: {probs[pred]:.0%})")
+                label = LABELS[pred_idx]
+                print(f"Predicted: {label} (confidence: {confidence:.0%})")
 
-                if probs[pred] >= CONFIDENCE_CUTOFF:
-                    label = LABELS[pred]
+                if confidence >= CONFIDENCE_CUTOFF:
+                    prediction_history.append(label)
+                else:
+                    prediction_history.append("uncertain")
+                    print("Confidence too low. Ignored.")
 
-                    if label == "left_hand":
-                        speller.move(Direction.LEFT)
-                    elif label == "right_hand":
-                        speller.move(Direction.RIGHT)
+                if len(prediction_history) == SMOOTHING_WINDOW_SIZE:
+                    vote_counts = Counter(prediction_history)
+                    most_common_label, count = vote_counts.most_common(1)[0]
+
+                    if count >= MIN_VOTES_REQUIRED:
+                        print(f"--> Action Confirmed: {most_common_label} (votes: {count}/{SMOOTHING_WINDOW_SIZE})")
+
+                        match most_common_label:
+                            case "uncertain":
+                                print("Decision uncertain. Skipped")
+                            case "left_hand":
+                                speller.move(Direction.LEFT)
+                            case "right_hand":
+                                speller.move(Direction.RIGHT)
+
+                        prediction_history.clear()
 
             except Exception as e:
                 print(f"Prediction failed: {e}")

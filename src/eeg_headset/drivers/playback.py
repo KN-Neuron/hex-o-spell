@@ -2,19 +2,21 @@ import time
 
 import numpy as np
 
-from src.egg_headset.model import HeadsetConfiguration
+from ..headset_config import HeadsetConfig
 
 
 class PlaybackDriver:
     """
     A driver that simulates a headset by reading from a pre-recorded data file.
     The data file should be a NumPy array (.npy) with shape (n_channels, n_samples)
-    and should match the configuration specified in the HeadsetConfiguration.
+    and should match the configuration specified in the HeadsetConfig.
     """
 
-    def __init__(self, config: HeadsetConfiguration, source: str, loop: bool = False):
+    def __init__(self, config: HeadsetConfig, source: str, loop: bool = False):
         self._data: np.ndarray = np.load(source)
 
+        if self._data.ndim == 3:
+            self._data = np.transpose(self._data, (1, 0, 2)).reshape(self._data.shape[1], -1)
         if self._data.ndim != 2:
             raise ValueError(
                 f"Data array must be 2D (channels, samples). Got {self._data.ndim}D."
@@ -42,6 +44,18 @@ not match config channel count of {config.n_channels}."""
     @property
     def channel_count(self) -> int:
         return self._config.n_channels
+
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected
+
+    @property
+    def is_streaming(self) -> bool:
+        return self._is_streaming
+
+    @property
+    def config(self) -> HeadsetConfig:
+        return self._config
 
     def connect(self) -> None:
         self._is_connected = True

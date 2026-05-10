@@ -1,28 +1,46 @@
 from typing import Callable, List
 import numpy as np
 from typing import Optional
-from src.egg_headset.drivers import HeadsetDriver
-from src.egg_headset.ring_buffer import RingBuffer
+from .drivers import HeadsetDriver
+from .ring_buffer import RingBuffer
 
 EegSubscriberCallback = Callable[[np.ndarray], None]
 
 
-class EggHeadset:
+class EEGHeadset:
     """
     Interfejs do opaski EEG.
     Umożliwia połączenie z opaską, rozpoczęcie i zatrzymanie strumienia danych,
     dodawanie annotacji oraz pobieranie próbek EEG od ostatniej annotacji.
     """
 
-    def __init__(self, driver: HeadsetDriver, buffer_size_seconds: int = 60) -> None:
+    def __init__(self, driver: HeadsetDriver, buffer_size_seconds: int = 10) -> None:
         self._driver = driver
         self._buffer = RingBuffer(
             self._driver.channel_count,
-            buffer_size_seconds * self._driver.sampling_rate,
+            buffer_size_seconds,
             self._driver.sampling_rate,
         )
         self._subscribers: List[EegSubscriberCallback] = []
         self._last_annotation_index: Optional[int] = None
+
+    @property
+    def sample_rate(self) -> int:
+        return self._driver.sampling_rate
+
+    @property
+    def channel_labels(self) -> list[str]:
+        return list(self._driver.config.channel_map.values())
+
+    @property
+    def buffer_size_seconds(self) -> int:
+        return self._buffer.capacity // self._driver.sampling_rate
+
+    def is_connected(self) -> bool:
+        return self._driver.is_connected
+    
+    def is_streaming(self) -> bool:
+        return self._driver.is_streaming
 
     def connect(self) -> None:
         self._driver.connect()
@@ -39,6 +57,10 @@ class EggHeadset:
     def add_subscriber(self, callback: EegSubscriberCallback) -> None:
         """Subskrybuje callback, który będzie wywoływany przy każdym wywołaniu poll()"""
         self._subscribers.append(callback)
+
+    def remove_subscriber(self, callback: EegSubscriberCallback) -> None:
+        """Usuwa callback z listy subskrybentów."""
+        self._subscribers.remove(callback)
 
     def annotate(self, label: str) -> None:
         self._last_annotation_index = self._buffer.total_samples

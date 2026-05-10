@@ -8,7 +8,7 @@ class HeadsetModel(Enum):
     SAMPLE_64CH = "SAMPLE_64CH"
 
 
-class HeadsetConfiguration:
+class HeadsetConfig:
     def __init__(self, model: HeadsetModel, config_path: str = "headsets.yaml"):
         self.model = model
 
