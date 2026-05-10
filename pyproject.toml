@@ -17,6 +17,9 @@ seaborn = "^0.13.0"
 scipy = "^1.14.0"
 mne = "^1.9.0"
 brainaccess = "^3.6.1"
+PyQt6 = "^6.5.0"
+pyserial = "^3.5"
+pyyaml = "^6.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
