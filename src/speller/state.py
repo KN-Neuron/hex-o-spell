@@ -81,7 +81,7 @@ class SpellerStateLetterNavigation(SpellerState):
     def select(self, speller: Speller) -> None:
         speller.on_letter_select(speller.map[self.selected_sector][self.cursor])
 
-        speller.state = SpellerStateWriting()
+        speller.state = SpellerStateSectorNavigation()
 
     def move(self, speller: Speller, direction: Direction) -> None:
         letters = speller.map[self.selected_sector]
